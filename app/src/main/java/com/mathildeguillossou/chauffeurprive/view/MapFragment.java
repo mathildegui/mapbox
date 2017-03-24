@@ -42,13 +42,18 @@ import com.mapbox.services.commons.models.Position;
 import com.mapbox.services.geocoding.v5.GeocodingCriteria;
 import com.mapbox.services.geocoding.v5.models.CarmenFeature;
 import com.mathildeguillossou.chauffeurprive.R;
+import com.mathildeguillossou.chauffeurprive.model.MyPlaces;
 
 import java.io.IOException;
+import java.util.Date;
 import java.util.List;
 import java.util.Locale;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import io.realm.Realm;
+import io.realm.RealmResults;
+import io.realm.Sort;
 
 /**
  * A simple {@link Fragment} subclass.
@@ -60,6 +65,12 @@ public class MapFragment extends Fragment {
     private static final float ZOOM = 16;
     private static final int PERMISSIONS_LOCATION = 0;
 
+    private static final String LATITUDE  = "latitude";
+    private static final String LONGITUDE = "longitude";
+
+    private double latitude  = 0.0;
+    private double longitude = 0.0;
+
     private int mEvent;
     private MapboxMap mMap;
     private Location mLastLocation;
@@ -67,8 +78,12 @@ public class MapFragment extends Fragment {
     private LocationServices mLocationServices;
     private OnMenuInteractionListener mListener;
 
+    private boolean isClicked = false;
+
     @BindView(R.id.mapview) MapView mapView;
     @BindView(R.id.query) GeocoderAutoCompleteView autocomplete;
+
+    private Realm realm;
 
     public MapFragment() {
         // Required empty public constructor
@@ -84,10 +99,25 @@ public class MapFragment extends Fragment {
         return new MapFragment();
     }
 
+    public static MapFragment newInstance(double latitude, double longitude) {
+        MapFragment fragment = new MapFragment();
+        Bundle b = new Bundle();
+        b.putDouble(LATITUDE, latitude);
+        b.putDouble(LONGITUDE, longitude);
+        fragment.setArguments(b);
+        return fragment;
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setHasOptionsMenu(true);
+
+
+        if(getArguments() != null) {
+            latitude = getArguments().getDouble(LATITUDE);
+            longitude = getArguments().getDouble(LONGITUDE);
+        }
     }
 
     @Override
@@ -100,7 +130,7 @@ public class MapFragment extends Fragment {
     public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         ButterKnife.bind(this, view);
-
+        realm = Realm.getDefaultInstance();
 
         MapboxAccountManager.start(getActivity(), getString(R.string.access_token));
 
@@ -108,6 +138,38 @@ public class MapFragment extends Fragment {
         initMapView(savedInstanceState);
         initGeocode();
         initCenterMarker();
+    }
+
+    private void registerPlace(final String address,
+                               final String city,
+                               final String country,
+                               final double latitude,
+                               final double longitude) {
+        realm.executeTransactionAsync(new Realm.Transaction() {
+            @Override
+            public void execute(Realm realm) {
+
+                MyPlaces place = new MyPlaces();
+
+                place.address    = address;
+                place.city       = city;
+                place.country    = country;
+                place.timestramp = String.valueOf(new Date().getTime());
+                place.latitude   = latitude;
+                place.longitude  = longitude;
+
+
+                //FIXME: implement here some timeout because in case user drag multi times it will not work
+                RealmResults<MyPlaces> list = realm.where(MyPlaces.class).findAllSorted("timestramp");
+                if(list != null ) {
+                    if(list.size() == 15)
+                        list.deleteFirstFromRealm();
+                        //list.deleteLastFromRealm();
+
+                    realm.insert(place);
+                }
+            }
+        });
     }
 
     /**
@@ -129,14 +191,17 @@ public class MapFragment extends Fragment {
         mapView.getMapAsync(new OnMapReadyCallback() {
             @Override
             public void onMapReady(MapboxMap mapboxMap) {
-                mapboxMap.setStyleUrl(Style.DARK);
+                mapboxMap.setStyleUrl(Style.LIGHT);
                 mMap = mapboxMap;
 
                 toggleGps(!mMap.isMyLocationEnabled());
 
-                if (mLastLocation != null) {
+                if(latitude != 0.0 && longitude != 0.0) {
+                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(latitude, longitude), ZOOM));
+                    setAddress(latitude, longitude, false);
+                } else if (mLastLocation != null) {
                     mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(mLastLocation), ZOOM));
-                    setAddress(mLastLocation.getLatitude(), mLastLocation.getLongitude());
+                    setAddress(mLastLocation.getLatitude(), mLastLocation.getLongitude(), false);
                 }
 
                 final Projection projection = mapboxMap.getProjection();
@@ -150,10 +215,10 @@ public class MapFragment extends Fragment {
                         PointF centerPoint  = new PointF(width / 2, (height + MdropPinView.getHeight()) / 2);
                         LatLng centerLatLng = new LatLng(projection.fromScreenLocation(centerPoint));
 
-                        if (mEvent == android.view.MotionEvent.ACTION_UP) {
-                            //FIXME STEP4 - store it in DB
+                        if (mEvent == android.view.MotionEvent.ACTION_UP && isClicked) {
                             Log.d("centerLatLng", centerLatLng.toString());
-                            setAddress(centerLatLng.getLatitude(), centerLatLng.getLongitude());
+                            isClicked = false;
+                            setAddress(centerLatLng.getLatitude(), centerLatLng.getLongitude(), true);
                         }
                     }
                 });
@@ -162,6 +227,7 @@ public class MapFragment extends Fragment {
                     @Override
                     public boolean onTouch(View v, MotionEvent event) {
                         mEvent = event.getAction();
+                        if(event.getAction() == MotionEvent.ACTION_DOWN) isClicked = true;
                         return false;
                     }
                 });
@@ -175,7 +241,7 @@ public class MapFragment extends Fragment {
      * @param latitude The latitude to retrieve the address
      * @param longitude The longitude to retrieve the address
      */
-    private void setAddress(double latitude, double longitude) {
+    private void setAddress(double latitude, double longitude, boolean shouldRegister) {
         List<Address> addresses = null;
 
         Geocoder geocoder = new Geocoder(getActivity(), Locale.getDefault());
@@ -188,11 +254,18 @@ public class MapFragment extends Fragment {
         } catch (IOException e) {
             e.printStackTrace();
         }
+
         if(addresses != null && addresses.size() > 0) {
             Log.d("ADDRESS", addresses.get(0).toString());
             autocomplete.setText(addresses.get(0).getAddressLine(0)
                     + ", " + addresses.get(0).getAddressLine(1) + ", "
                     + addresses.get(0).getAddressLine(2));
+            if(shouldRegister)
+                registerPlace(addresses.get(0).getAddressLine(0),
+                    addresses.get(0).getAddressLine(1),
+                    addresses.get(0).getAddressLine(2),
+                    latitude,
+                    longitude);
         }
     }
 
@@ -219,8 +292,6 @@ public class MapFragment extends Fragment {
             public void OnFeatureClick(CarmenFeature feature) {
                 Position position = feature.asPosition();
                 updateMap(position.getLatitude(), position.getLongitude());
-                //add pin when the user select new address
-                //FIXME STEP4 - store it in DB
             }
         });
     }
@@ -231,11 +302,6 @@ public class MapFragment extends Fragment {
      * @param longitude Longitude of the position
      */
     private void updateMap(double latitude, double longitude) {
-        // Build marker
-        mMap.addMarker(new MarkerOptions()
-                .position(new LatLng(latitude, longitude))
-                .title("Geocoder result"));
-
         // Animate camera to geocoder result location
         CameraPosition cameraPosition = new CameraPosition.Builder()
                 .target(new LatLng(latitude, longitude))
