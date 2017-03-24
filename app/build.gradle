@@ -1,0 +1,53 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 25
+    buildToolsVersion "25.0.2"
+    defaultConfig {
+        applicationId "com.mathildeguillossou.chauffeurprive"
+        minSdkVersion 18
+        targetSdkVersion 25
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        multiDexEnabled true
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    /*dataBinding {
+        enabled = true
+    }*/
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+
+    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
+        exclude group: 'com.android.support', module: 'support-annotations'
+    })
+
+
+    compile('com.mapbox.mapboxsdk:mapbox-android-sdk:4.2.2@aar') {
+        transitive = true
+    }
+    //something seems to be broken here ... strange behaviour
+    /*compile ('com.mapbox.mapboxsdk:mapbox-android-sdk:5.0.0@aar'){
+        transitive=true
+    }*/
+
+    compile('com.mapbox.mapboxsdk:mapbox-android-services:1.3.1@aar') {
+        transitive = true
+    }
+
+    //butterknife
+    compile 'com.android.support:appcompat-v7:25.3.0'
+    compile 'com.android.support.constraint:constraint-layout:1.0.2'
+    compile 'com.android.support:support-v4:25.3.0'
+    compile 'com.jakewharton:butterknife:8.5.1'
+    testCompile 'junit:junit:4.12'
+    annotationProcessor 'com.jakewharton:butterknife-compiler:8.5.1'
+}
