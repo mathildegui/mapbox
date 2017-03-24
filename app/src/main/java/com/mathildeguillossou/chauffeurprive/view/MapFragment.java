@@ -3,18 +3,26 @@ package com.mathildeguillossou.chauffeurprive.view;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.PointF;
+import android.location.Address;
+import android.location.Geocoder;
 import android.location.Location;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.Fragment;
+import android.util.Log;
+import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.FrameLayout;
+import android.widget.ImageView;
 
 import com.mapbox.mapboxsdk.MapboxAccountManager;
 import com.mapbox.mapboxsdk.annotations.MarkerOptions;
@@ -28,11 +36,16 @@ import com.mapbox.mapboxsdk.location.LocationServices;
 import com.mapbox.mapboxsdk.maps.MapView;
 import com.mapbox.mapboxsdk.maps.MapboxMap;
 import com.mapbox.mapboxsdk.maps.OnMapReadyCallback;
+import com.mapbox.mapboxsdk.maps.Projection;
 import com.mapbox.services.android.geocoder.ui.GeocoderAutoCompleteView;
 import com.mapbox.services.commons.models.Position;
 import com.mapbox.services.geocoding.v5.GeocodingCriteria;
 import com.mapbox.services.geocoding.v5.models.CarmenFeature;
 import com.mathildeguillossou.chauffeurprive.R;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
@@ -47,9 +60,11 @@ public class MapFragment extends Fragment {
     private static final float ZOOM = 16;
     private static final int PERMISSIONS_LOCATION = 0;
 
-    private MapboxMap map;
-    private Location lastLocation;
-    private LocationServices locationServices;
+    private int mEvent;
+    private MapboxMap mMap;
+    private Location mLastLocation;
+    private ImageView MdropPinView;
+    private LocationServices mLocationServices;
     private OnMenuInteractionListener mListener;
 
     @BindView(R.id.mapview) MapView mapView;
@@ -92,13 +107,21 @@ public class MapFragment extends Fragment {
         initLocation();
         initMapView(savedInstanceState);
         initGeocode();
+        initCenterMarker();
     }
 
+    /**
+     * Init the Location services
+     */
     private void initLocation() {
-        locationServices = LocationServices.getLocationServices(getActivity());
-        lastLocation = locationServices.getLastLocation();
+        mLocationServices = LocationServices.getLocationServices(getActivity());
+        mLastLocation = mLocationServices.getLastLocation();
     }
 
+    /**
+     * All you need to initiate the map view and handle callbacks
+     * @param savedInstanceState
+     */
     private void initMapView(Bundle savedInstanceState) {
         mapView.onCreate(savedInstanceState);
 
@@ -107,33 +130,87 @@ public class MapFragment extends Fragment {
             @Override
             public void onMapReady(MapboxMap mapboxMap) {
                 mapboxMap.setStyleUrl(Style.DARK);
-                map = mapboxMap;
+                mMap = mapboxMap;
 
-                toggleGps(!map.isMyLocationEnabled());
+                toggleGps(!mMap.isMyLocationEnabled());
 
-                if (lastLocation != null) {
-                    map.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(lastLocation), ZOOM));
-
-                    //market for the user position
-                    MarkerViewOptions markerViewOptions = new MarkerViewOptions()
-                            .position(new LatLng(lastLocation));
-                    map.addMarker(markerViewOptions);
+                if (mLastLocation != null) {
+                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(mLastLocation), ZOOM));
+                    setAddress(mLastLocation.getLatitude(), mLastLocation.getLongitude());
                 }
 
-                map.setOnMapLongClickListener(new MapboxMap.OnMapLongClickListener() {
+                final Projection projection = mapboxMap.getProjection();
+                final int width  = mapView.getMeasuredWidth();
+                final int height = mapView.getMeasuredHeight();
+
+
+                mMap.setOnCameraChangeListener(new MapboxMap.OnCameraChangeListener() {
                     @Override
-                    public void onMapLongClick(@NonNull LatLng point) {
-                        //FIXME STEP4 - store it in DB
-                        MarkerViewOptions markerViewOptions = new MarkerViewOptions()
-                                .position(point);
-                        map.addMarker(markerViewOptions);
-                        map.invalidate();
+                    public void onCameraChange(CameraPosition position) {
+                        PointF centerPoint  = new PointF(width / 2, (height + MdropPinView.getHeight()) / 2);
+                        LatLng centerLatLng = new LatLng(projection.fromScreenLocation(centerPoint));
+
+                        if (mEvent == android.view.MotionEvent.ACTION_UP) {
+                            //FIXME STEP4 - store it in DB
+                            Log.d("centerLatLng", centerLatLng.toString());
+                            setAddress(centerLatLng.getLatitude(), centerLatLng.getLongitude());
+                        }
+                    }
+                });
+
+                mapView.setOnTouchListener(new View.OnTouchListener() {
+                    @Override
+                    public boolean onTouch(View v, MotionEvent event) {
+                        mEvent = event.getAction();
+                        return false;
                     }
                 });
             }
         });
     }
 
+    /**
+     * Get address from lat and long and update the autocomplete text
+     * FIXME: two separate things here.
+     * @param latitude The latitude to retrieve the address
+     * @param longitude The longitude to retrieve the address
+     */
+    private void setAddress(double latitude, double longitude) {
+        List<Address> addresses = null;
+
+        Geocoder geocoder = new Geocoder(getActivity(), Locale.getDefault());
+        try {
+            addresses = geocoder.getFromLocation(
+                    latitude,
+                    longitude,
+                    // In this sample, get just a single address.
+                    1);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        if(addresses != null && addresses.size() > 0) {
+            Log.d("ADDRESS", addresses.get(0).toString());
+            autocomplete.setText(addresses.get(0).getAddressLine(0)
+                    + ", " + addresses.get(0).getAddressLine(1) + ", "
+                    + addresses.get(0).getAddressLine(2));
+        }
+    }
+
+    /**
+     * This marker will be pinned in the middle of the map
+     */
+    private void initCenterMarker () {
+        MdropPinView = new ImageView(getActivity());
+        MdropPinView.setImageResource(R.drawable.default_marker);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        MdropPinView.setLayoutParams(params);
+        mapView.addView(MdropPinView);
+    }
+
+    /**
+     * Geocoding Editext - top of the screen
+     * TYPE_ADDRESS here -- can be changed
+     */
     private void initGeocode() {
         autocomplete.setAccessToken(MapboxAccountManager.getInstance().getAccessToken());
         autocomplete.setType(GeocodingCriteria.TYPE_ADDRESS);
@@ -143,27 +220,28 @@ public class MapFragment extends Fragment {
                 Position position = feature.asPosition();
                 updateMap(position.getLatitude(), position.getLongitude());
                 //add pin when the user select new address
-                LatLng ll = new LatLng(position.getLatitude(), position.getLongitude());
-                MarkerViewOptions markerViewOptions = new MarkerViewOptions()
-                        .position(ll);
-                map.addMarker(markerViewOptions);
                 //FIXME STEP4 - store it in DB
             }
         });
     }
 
+    /**
+     * Update map to the dedicate location and add the marker
+     * @param latitude Latitude of the position
+     * @param longitude Longitude of the position
+     */
     private void updateMap(double latitude, double longitude) {
         // Build marker
-        map.addMarker(new MarkerOptions()
+        mMap.addMarker(new MarkerOptions()
                 .position(new LatLng(latitude, longitude))
                 .title("Geocoder result"));
 
         // Animate camera to geocoder result location
         CameraPosition cameraPosition = new CameraPosition.Builder()
                 .target(new LatLng(latitude, longitude))
-                .zoom(15)
+                .zoom(ZOOM)
                 .build();
-        map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition), 5000, null);
+        mMap.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition), 5000, null);
     }
 
 
@@ -191,10 +269,14 @@ public class MapFragment extends Fragment {
         mapView.onLowMemory();
     }
 
+    /**
+     * Check for user permissions - otherwise it will crash
+     * @param enableGps is the gps location enabled
+     */
     private void toggleGps(boolean enableGps) {
         if (enableGps) {
             // Check if user has granted location permission
-            if (!locationServices.areLocationPermissionsGranted()) {
+            if (!mLocationServices.areLocationPermissionsGranted()) {
                 ActivityCompat.requestPermissions(getActivity(), new String[]{
                         Manifest.permission.ACCESS_COARSE_LOCATION,
                         Manifest.permission.ACCESS_FINE_LOCATION}, PERMISSIONS_LOCATION);
@@ -206,31 +288,35 @@ public class MapFragment extends Fragment {
         }
     }
 
+    /**
+     *
+     * @param enabled
+     */
     private void enableLocation(boolean enabled) {
         if (enabled) {
             // If we have the last location of the user, we can move the camera to that position.
-            Location lastLocation = locationServices.getLastLocation();
+            Location lastLocation = mLocationServices.getLastLocation();
             if (lastLocation != null) {
-                map.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(lastLocation), ZOOM));
+                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(lastLocation), ZOOM));
             }
 
-            locationServices.addLocationListener(new LocationListener() {
+            mLocationServices.addLocationListener(new LocationListener() {
                 @Override
                 public void onLocationChanged(Location location) {
                     if (location != null) {
-                        // Move the map camera to where the user location is and then remove the
+                        // Move the mMap camera to where the user location is and then remove the
                         // listener so the camera isn't constantly updating when the user location
                         // changes. When the user disables and then enables the location again, this
                         // listener is registered again and will adjust the camera once again.
-                        map.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location), ZOOM));
-                        locationServices.removeLocationListener(this);
+                        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(new LatLng(location), ZOOM));
+                        mLocationServices.removeLocationListener(this);
                     }
                 }
             });
         }
 
-        // Enable or disable the location layer on the map -- No need here. We just want the pin
-        //map.setMyLocationEnabled(enabled);
+        // Enable or disable the location layer on the mMap -- No need here. We just want the pin
+        //mMap.setMyLocationEnabled(enabled);
     }
 
     @Override

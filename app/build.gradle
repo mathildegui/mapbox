@@ -43,6 +43,11 @@ dependencies {
         transitive = true
     }
 
+    // Geocoder SDK
+    compile ('com.mapbox.mapboxsdk:mapbox-android-geocoder:1.0.0@aar'){
+        transitive=true
+    }
+
     //butterknife
     compile 'com.android.support:appcompat-v7:25.3.0'
     compile 'com.android.support.constraint:constraint-layout:1.0.2'
