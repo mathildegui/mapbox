@@ -1,8 +1,6 @@
 <resources>
-    <string name="app_name">ChauffeurPrive</string>
+    <string name="app_name">Chauffeur Prive</string>
     <string name="access_token">pk.eyJ1IjoibWF0aGlsZGVndWkiLCJhIjoiY2owbDRtYWplMDAxODJ3cmlscDdsYWpmMSJ9.Hb6xIMMKPyCL0nsAuQKH0w</string>
     <string name="my_Places">My places</string>
 
-    <!-- TODO: Remove or change this placeholder text -->
-    <string name="hello_blank_fragment">Hello blank fragment</string>
 </resources>

@@ -164,7 +164,7 @@ public class MapFragment extends Fragment {
                 if(list != null ) {
                     if(list.size() == 15)
                         list.deleteFirstFromRealm();
-                        //list.deleteLastFromRealm();
+                    //list.deleteLastFromRealm();
 
                     realm.insert(place);
                 }
@@ -256,16 +256,19 @@ public class MapFragment extends Fragment {
         }
 
         if(addresses != null && addresses.size() > 0) {
+            String country = "";
+            country += (addresses.get(0).getAddressLine(0) != null)?addresses.get(0).getAddressLine(0):"";
+            country += (addresses.get(0).getAddressLine(1) != null)? ", " + addresses.get(0).getAddressLine(1):"";
+            country += (addresses.get(0).getAddressLine(2) != null)? ", " + addresses.get(0).getAddressLine(2):"";
+
             Log.d("ADDRESS", addresses.get(0).toString());
-            autocomplete.setText(addresses.get(0).getAddressLine(0)
-                    + ", " + addresses.get(0).getAddressLine(1) + ", "
-                    + addresses.get(0).getAddressLine(2));
+            autocomplete.setText(country);
             if(shouldRegister)
                 registerPlace(addresses.get(0).getAddressLine(0),
-                    addresses.get(0).getAddressLine(1),
-                    addresses.get(0).getAddressLine(2),
-                    latitude,
-                    longitude);
+                        addresses.get(0).getAddressLine(1),
+                        addresses.get(0).getAddressLine(2),
+                        latitude,
+                        longitude);
         }
     }
 

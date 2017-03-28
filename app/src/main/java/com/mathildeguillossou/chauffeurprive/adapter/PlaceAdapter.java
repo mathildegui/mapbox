@@ -36,8 +36,14 @@ public class PlaceAdapter extends RealmRecyclerViewAdapter<MyPlaces, PlaceAdapte
     public void onBindViewHolder(MyViewHolder holder, int position) {
 
         if(getData() != null) {
+            int line = position +1;
             MyPlaces obj = getData().get(position);
-            holder.addressTv.setText(position + ": " + obj.address);
+
+            String address = "";
+            address += (obj.address != null)?obj.address:"";
+            address += (obj.city != null)?", " + obj.city:"";
+            address += (obj.country != null)?", " + obj.country:"";
+            holder.addressTv.setText(line + ": " + address);
             holder.bind(obj, mListener);
         }
     }
